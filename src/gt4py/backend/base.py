@@ -509,6 +509,11 @@ class BaseModuleGenerator(abc.ABC):
             )
         )
 
+        splitters = [
+            splitter.name
+            for splitter in gt_utils.flatten_iter(self.builder.implementation_ir.splitters)
+        ]
+
         module_source = self.template.render(
             imports=self.generate_imports(),
             module_members=self.generate_module_members(),
@@ -520,6 +525,7 @@ class BaseModuleGenerator(abc.ABC):
             gt_domain_info=domain_info,
             gt_field_info=repr(self.args_data["field_info"]),
             gt_parameter_info=repr(self.args_data["parameter_info"]),
+            gt_splitters=splitters,
             gt_constants=constants,
             gt_options=options,
             stencil_signature=self.generate_signature(),
@@ -645,6 +651,8 @@ pyext_module = gt_utils.make_module_from_file(
                 args.append(arg.name)
                 if arg.name in api_fields:
                     args.append("list(_origin_['{}'])".format(arg.name))
+        for arg in gt_utils.flatten_iter(self.builder.implementation_ir.splitters):
+            args.append(arg.name)
 
         # only generate implementation if any multi_stages are present. e.g. if no statement in the
         # stencil has any effect on the API fields, this may not be the case since they could be

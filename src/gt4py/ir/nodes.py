@@ -124,7 +124,10 @@ storing a reference to the piece of source code which originated the node.
         # start is included
         # end is excluded
 
-    ComputationBlock(interval: AxisInterval, iteration_order: IterationOrder, body: BlockStmt)
+    ComputationBlock(interval: AxisInterval,
+                     order: IterationOrder,
+                     body: BlockStmt,
+                     [parallel_interval: List[AxisInterval]])
 
     ArgumentInfo(name: str, is_keyword: bool, [default: Any])
 
@@ -133,6 +136,7 @@ storing a reference to the piece of source code which originated the node.
                       api_signature: List[ArgumentInfo],
                       api_fields: List[FieldDecl],
                       parameters: List[VarDecl],
+                      splitters: List[VarDecl],
                       computations: List[ComputationBlock],
                       [externals: Dict[str, Any], sources: Dict[str, str]])
 
@@ -147,7 +151,8 @@ Implementation IR
 
     ApplyBlock(interval: AxisInterval,
                local_symbols: Dict[str, VarDecl],
-               body: BlockStmt)
+               body: BlockStmt,
+               [parallel_interval: List[AxisInterval]])
 
     Stage(name: str,
           accessors: List[Accessor],
@@ -163,6 +168,7 @@ Implementation IR
                           domain: Domain,
                           fields: Dict[str, FieldDecl],
                           parameters: Dict[str, VarDecl],
+                          splitters: List[VarDecl],
                           multi_stages: List[MultiStage],
                           fields_extents: Dict[str, Extent],
                           unreferenced: List[str],
@@ -716,6 +722,7 @@ class ComputationBlock(Node):
     interval = attribute(of=AxisInterval)
     iteration_order = attribute(of=IterationOrder)
     body = attribute(of=BlockStmt)
+    parallel_interval = attribute(of=ListOf[AxisInterval], optional=True)
     loc = attribute(of=Location, optional=True)
 
 
@@ -733,6 +740,7 @@ class StencilDefinition(Node):
     api_signature = attribute(of=ListOf[ArgumentInfo])
     api_fields = attribute(of=ListOf[FieldDecl])
     parameters = attribute(of=ListOf[VarDecl])
+    splitters = attribute(of=ListOf[ListOf[VarDecl]])
     computations = attribute(of=ListOf[ComputationBlock])
     externals = attribute(of=DictOf[str, Any], optional=True)
     sources = attribute(of=DictOf[str, str], optional=True)
@@ -766,6 +774,7 @@ class ApplyBlock(Node):
     interval = attribute(of=AxisInterval)
     local_symbols = attribute(of=DictOf[str, VarDecl])
     body = attribute(of=BlockStmt)
+    parallel_interval = attribute(of=ListOf[AxisInterval], optional=True)
 
 
 @attribclass
@@ -825,6 +834,7 @@ class StencilImplementation(IIRNode):
     domain = attribute(of=Domain)
     fields = attribute(of=DictOf[str, FieldDecl])  # All fields, including temporaries
     parameters = attribute(of=DictOf[str, VarDecl])
+    splitters = attribute(of=ListOf[ListOf[VarDecl]])
     multi_stages = attribute(of=ListOf[MultiStage])
     fields_extents = attribute(of=DictOf[str, Extent])
     unreferenced = attribute(of=ListOf[str], factory=list)

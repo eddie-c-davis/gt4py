@@ -28,6 +28,7 @@ from gt4py.utils.attrib import List as ListOf
 from gt4py.utils.attrib import Optional
 from gt4py.utils.attrib import Set as SetOf
 from gt4py.utils.attrib import Tuple as TupleOf
+from gt4py.utils.attrib import Union as UnionOf
 from gt4py.utils.attrib import attribclass, attribute
 
 
@@ -77,8 +78,8 @@ class IntervalInfo:
         End level and offset (not included).
     """
 
-    start = attribute(of=TupleOf[int, int])
-    end = attribute(of=TupleOf[int, int])
+    start = attribute(of=TupleOf[UnionOf[int, gt_ir.VarRef, gt_ir.LevelMarker], int])
+    end = attribute(of=TupleOf[UnionOf[int, gt_ir.VarRef, gt_ir.LevelMarker], int])
 
     def as_tuple(self, k_interval_sizes: list) -> NumericTuple:
         start = sum(k_interval_sizes[: self.start[0]]) + self.start[1]
@@ -142,19 +143,18 @@ class IntervalBlockInfo:
     Parameters
     ----------
     id : `int`
-        Unique identifier.
-    intervals : IntervalInfo`
-        Sequential-axis interval to which this block is applied.
-    stmts : `list` [`StatementInfo`]
-        List of operations.
-    inputs : `dict` [`str`, `gt4py.definitions.Extent`]
-        Inputs (with extent) to these operations.
-    outputs : `set` [`str`]
-        Outputs from these operations (with zero extent).
+        ComputeUnitInfo Id.
+    interval : int
+        IntervalInfo Id.
+    parallel_interval : `list` [`IntervalInfo`]
+        The parallel interval used for all ij_blocks.
+    stmts : `list` [`gridtools.ir.Statement`]
+        List of operations in the regional computation.
     """
 
     id = attribute(of=int)
     interval = attribute(of=IntervalInfo)
+    parallel_interval = attribute(of=ListOf[IntervalInfo], optional=True)
     stmts = attribute(of=ListOf[StatementInfo], factory=list)
     inputs = attribute(of=DictOf[str, Extent], factory=dict)
     outputs = attribute(of=SetOf[str], factory=set)
@@ -167,21 +167,18 @@ class IJBlockInfo:
     Parameters
     ----------
     id : `int`
-        Unique identifier.
-    intervals : `set` [`IntervalInfo`]
-        Set of sequential-axis intervals over which this block iterates
-    interval_blocks : `list` [`IntervalBlockInfo`]
-        List of blocks (each has a list of statements) that this block executes.
-    inputs : `dict` [`str`, `gt4py.definitions.Extent`]
-        Each input to this block with extent.
-    outputs : `set` [`str`]
-        Outputs from this block (with zero extent).
-    compute_extent : `gt4py.definitions.Extent`
-        Compute extent for this block.
+        ComputeUnitInfo Id.
+    interval : int
+        IntervalInfo Id.
+    parallel_interval : `list` [`IntervalInfo`]
+        The parallel interval used for all ij_blocks.
+    stmts : `list` [`gridtools.ir.Statement`]
+        List of operations in the regional computation.
     """
 
     id = attribute(of=int)
     intervals = attribute(of=SetOf[IntervalInfo])
+    parallel_interval = attribute(of=ListOf[IntervalInfo], optional=True)
     interval_blocks = attribute(of=ListOf[IntervalBlockInfo], factory=list)
     inputs = attribute(of=DictOf[str, Extent], factory=dict)
     outputs = attribute(of=SetOf[str], factory=set)
@@ -197,22 +194,19 @@ class DomainBlockInfo:
     Parameters
     ----------
     id : `int`
-        Unique identifier.
-    iteration_order : `gt4py.ir.IterationOrder`
-        The iteration order of the resulting multistage.
-    intervals : `set` [`IntervalInfo`]
-        Set of sequential-axis intervals over which this block iterates.
-    ij_blocks : `list` [`IJBlockInfo`]
-        List of stage blocks.
-    inputs : `dict` [`str`, `gt4py.definitions.Extent`]
-        Each input to this block with extent.
-    outputs : `set` [`str`]
-        Outputs from this block (with zero extent).
+        ComputeUnitInfo Id.
+    interval : int
+        IntervalInfo Id.
+    parallel_interval : `list` [`IntervalInfo`]
+        The parallel interval used for all ij_blocks.
+    stmts : `list` [`gridtools.ir.Statement`]
+        List of operations in the regional computation.
     """
 
     id = attribute(of=int)
     iteration_order = attribute(of=gt_ir.IterationOrder)
     intervals = attribute(of=SetOf[IntervalInfo])
+    parallel_interval = attribute(of=ListOf[IntervalInfo], optional=True)
     ij_blocks = attribute(of=ListOf[IJBlockInfo], factory=list)
     inputs = attribute(of=DictOf[str, Extent], factory=dict)
     outputs = attribute(of=SetOf[str], factory=set)
