@@ -105,6 +105,7 @@ def get_gt_pyext_build_opts(
         extra_link_args.extend(profile_flags)
 
     if uses_cuda:
+        extra_link_args.extend(["-lnvToolsExt"])
         build_opts = dict(
             include_dirs=include_dirs,
             extra_compile_args=extra_compile_args,

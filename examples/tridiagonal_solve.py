@@ -1,12 +1,14 @@
 #!/usr/bin/env python
 
-import numpy as np
 import sys
 import time
 import traceback as tb
 
+import numpy as np
+
 import gt4py
 from gt4py import gtscript
+
 
 try:
     import cupy as cp

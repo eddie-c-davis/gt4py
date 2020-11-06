@@ -50,6 +50,28 @@
     - profile: bool
 #}
 
+{% if profile and ("cuda" in gt_backend) %}
+{# https://developer.nvidia.com/blog/cuda-pro-tip-generate-custom-application-profile-timelines-nvtx/ #}
+#include "nvToolsExt.h"
+
+const uint32_t colors[] = { 0xff00ff00, 0xff0000ff, 0xffffff00, 0xffff00ff, 0xff00ffff, 0xffff0000, 0xffffffff };
+const int num_colors = sizeof(colors)/sizeof(uint32_t);
+
+#define PUSH_RANGE(name,cid) { \
+    int color_id = cid; \
+    color_id = color_id%num_colors;\
+    nvtxEventAttributes_t eventAttrib = {0}; \
+    eventAttrib.version = NVTX_VERSION; \
+    eventAttrib.size = NVTX_EVENT_ATTRIB_STRUCT_SIZE; \
+    eventAttrib.colorType = NVTX_COLOR_ARGB; \
+    eventAttrib.color = colors[color_id]; \
+    eventAttrib.messageType = NVTX_MESSAGE_TYPE_ASCII; \
+    eventAttrib.message.ascii = name; \
+    nvtxRangePushEx(&eventAttrib); \
+}
+#define POP_RANGE nvtxRangePop();
+{% endif %}
+
 #include "computation.hpp"
 
 namespace {{ stencil_unique_name }} {
@@ -252,11 +274,15 @@ void run(const std::array<uint_t, ndim>& domain,
 {# --- CUDA --- #}
 {%- if "cuda" in gt_backend %}
 {%- if profile -%}
-cudaProfilerStart();
+    cudaProfilerStart();
 {%- endif -%}
 
 {% for multi in multi_stages %}
     {
+
+    {% if profile %}
+    PUSH_RANGE("Stencil: {{ stencil_unique_name.split('___')[0] }}, Multi_stage: {{ multi.name }}",1)
+    {% endif %}
     const uint_t i_size = i_max - i_min + 1;
     const uint_t j_size = j_max - j_min + 1;
     const uint_t k_size = k_max - k_min + 1;
@@ -309,10 +335,13 @@ cudaProfilerStart();
     {{ splitter }}
     {%- endfor %});
     {%- set extra_indent=0 %}
+    {% if profile %}
+    POP_RANGE
+    {% endif %}
     }
 {% endfor %}
 {%- if profile -%}
-cudaProfilerStop();
+    cudaProfilerStop();
 {%- endif -%}
 {# --- C++ --- #}
 {%- else %}
