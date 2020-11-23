@@ -1278,6 +1278,74 @@ class DemoteLocalTemporariesToVariablesPass(TransformPass):
         cls.DemoteSymbols.apply(transform_data.implementation_ir, demotables)
 
 
+class PolyhedralExtractor(gt_ir.IRNodeVisitor):
+    def __call__(self, node: gt_ir.StencilImplementation) -> Set[str]:
+        assert isinstance(node, gt_ir.StencilImplementation)
+        self.field_names: List[str] = []
+        self.interval: gt_ir.AxisInterval = None
+        self.iteration_order: gt_ir.IterationOrder = None
+        self.stage_name: str = ""
+        self.relations: Dict[str, Dict[Any]] = {}
+        self.visit(node)
+        return self.relations
+
+    def visit_MultiStage(self, node: gt_ir.MultiStage) -> None:
+        self.iteration_order = node.iteration_order
+        self.generic_visit(node)
+
+    def visit_Stage(self, node: gt_ir.Stage) -> None:
+        self.stage_name = node.name
+        self.generic_visit(node)
+
+    def visit_ApplyBlock(self, node: gt_ir.ApplyBlock) -> None:
+        self.interval = node.interval
+        apply_block = node
+
+        interval_start = apply_block.interval.start
+        start_level = "min" if interval_start.level == gt_ir.LevelMarker.START else "max"
+        start_offset = interval_start.offset
+
+        interval_end = apply_block.interval.end
+        end_level = "min" if interval_end.level == gt_ir.LevelMarker.START else "max"
+        end_offset = interval_end.offset
+
+        # TODO: Determine why this is needed...
+        if end_level == "min" and end_offset > 0:
+            end_offset -= 1
+        elif start_level == "max" and start_offset < 0:
+            start_offset += 1
+
+        interval = [
+            dict(level=start_level, offset=start_offset),
+            dict(level=end_level, offset=end_offset),
+        ]
+
+        stage_data = {}
+        stage_data["name"] = self.stage_name
+        stage_data["extents"]: List[int] = []
+
+        region = stage_data["regions"][0]
+        entry_conditional = (
+            region["entry_conditional"] if "entry_conditional" in region else ""
+        )
+        # if len(entry_conditional) > 0:
+        #     entry_conditional = self._format_conditional(entry_conditional)
+
+        # sub_stage["body"] = region["body"]
+        # sub_stage["entry_conditional"] = entry_conditional
+        # sub_stage["interval"] = interval if interval != self.last_interval_ else []
+        # del sub_stage["regions"]
+        # stages.append(sub_stage)
+
+        # if self.fuse_k_loops_:
+        #     self.last_interval_ = interval.copy()
+
+        self.generic_visit(node)
+
+    def visit_FieldRef(self, node: gt_ir.FieldRef) -> None:
+        self.field_names.append(node.name)
+
+
 class HousekeepingPass(TransformPass):
     class WarnIfNoEffect(gt_ir.IRNodeVisitor):
         """Warn if StencilImplementation has no effect."""

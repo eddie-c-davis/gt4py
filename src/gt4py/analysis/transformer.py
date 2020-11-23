@@ -32,6 +32,7 @@ from .passes import (
     InitInfoPass,
     MergeBlocksPass,
     NormalizeBlocksPass,
+    PolyhedralExtractor,
 )
 
 
@@ -113,6 +114,10 @@ class IRTransformer:
 
         # prune some stages that don't have effect
         HousekeepingPass.apply(self.transform_data)
+
+        # Extract polyhedral expressions
+        polyhedral_extractor = PolyhedralExtractor()
+        relations = polyhedral_extractor(self.transform_data.implementation_ir)
 
         if options.build_info is not None:
             options.build_info["def_ir"] = self.transform_data.definition_ir
