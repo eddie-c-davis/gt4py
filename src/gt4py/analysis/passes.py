@@ -1293,12 +1293,19 @@ class TemporaryInliningPass(TransformPass):
             self.multistage_name = node.name
             self.generic_visit(node)
 
+        def visit_Assign(self, node: gt_ir.Assign):
+            target_name = node.target.name
+            if target_name in self.temp_multistages:
+                self.temp_multistages[target_name] = self.multistage_name
+            else:
+                self.generic_visit(node.target)
+            self.generic_visit(node.value)
+
         def visit_FieldRef(self, node: gt_ir.FieldRef) -> None:
             field_name = node.name
             if field_name in self.temp_multistages:
-                if self.temp_multistages[field_name] == "":
-                    self.temp_multistages[field_name] = self.multistage_name
-                elif self.multistage_name != self.temp_multistages[field_name]:
+                assert len(self.temp_multistages[field_name]) > 0
+                if self.multistage_name != self.temp_multistages[field_name]:
                     del self.temp_multistages[field_name]
 
     class TemporaryInliner(gt_ir.IRNodeMapper):
@@ -1327,13 +1334,8 @@ class TemporaryInliningPass(TransformPass):
                 self.inline_temp_exprs[target_name] = node.value
                 return False, None
 
-            keep_node, value_node = self.generic_visit(path, "", node.value)
-            if keep_node:
-                node.value = value_node
-            keep_node, target_node = self.generic_visit(path, target_name, node.target)
-            if keep_node:
-                node.target = target_node
-
+            node.target = self.generic_visit(path, target_name, node.target)[1]
+            node.value = self.generic_visit(path, "", node.value)[1]
             return True, node
 
         def visit_FieldRef(
@@ -1347,9 +1349,9 @@ class TemporaryInliningPass(TransformPass):
     def apply(self, transform_data: TransformData) -> TransformData:
         collect_temporaries = self.CollectTemporaries()
         inline_temps: Set[str] = collect_temporaries(transform_data.implementation_ir)
-
-        temporary_inliner = self.TemporaryInliner(inline_temps)
-        transform_data.implementation_ir = temporary_inliner(transform_data.implementation_ir)
+        if len(inline_temps) > 0:
+            temporary_inliner = self.TemporaryInliner(inline_temps)
+            transform_data.implementation_ir = temporary_inliner(transform_data.implementation_ir)
         return transform_data
 
 
