@@ -1279,26 +1279,33 @@ class DemoteLocalTemporariesToVariablesPass(TransformPass):
 
 
 class TemporaryInliningPass(TransformPass):
-    class CountTemporaries(gt_ir.IRNodeVisitor):
-        def __call__(self, node: gt_ir.StencilImplementation) -> Dict[str, int]:
+    class CollectTemporaries(gt_ir.IRNodeVisitor):
+        def __call__(self, node: gt_ir.StencilImplementation) -> Set[str]:
             assert isinstance(node, gt_ir.StencilImplementation)
-            self.temp_counts = {field_name: 0 for field_name in node.temporary_fields}
+            self.multistage_name: str = ""
+            self.temp_multistages: Dict[str, str] = {
+                field_name: "" for field_name in node.temporary_fields
+            }
             self.visit(node)
-            return self.temp_counts
+            return set(self.temp_multistages.keys())
+
+        def visit_MultiStage(self, node: gt_ir.MultiStage) -> None:
+            self.multistage_name = node.name
+            self.generic_visit(node)
 
         def visit_FieldRef(self, node: gt_ir.FieldRef) -> None:
-            if node.name in self.temp_counts:
-                self.temp_counts[node.name] += 1
-
-        def visit_VarRef(self, node: gt_ir.FieldRef) -> None:
-            if node.name not in self.temp_counts:
-                self.temp_counts[node.name] = 0
-            self.temp_counts[node.name] += 1
+            field_name = node.name
+            if field_name in self.temp_multistages:
+                if self.temp_multistages[field_name] == "":
+                    self.temp_multistages[field_name] = self.multistage_name
+                elif self.multistage_name != self.temp_multistages[field_name]:
+                    del self.temp_multistages[field_name]
 
     class TemporaryInliner(gt_ir.IRNodeMapper):
-        def __init__(self, temp_counts: Dict[str, int]):
-            self.iir = None
-            self.temp_counts = temp_counts
+        def __init__(self, inline_temps: Set[str]):
+            self.inline_temp_exprs: Dict[str, gt_ir.IIRNode] = {
+                temp_name: None for temp_name in inline_temps
+            }
 
         def __call__(self, node: gt_ir.StencilImplementation) -> gt_ir.StencilImplementation:
             assert isinstance(node, gt_ir.StencilImplementation)
@@ -1307,14 +1314,25 @@ class TemporaryInliningPass(TransformPass):
         def visit_StencilImplementation(
             self, path: tuple, node_name: str, node: gt_ir.StencilImplementation
         ) -> gt_ir.StencilImplementation:
-            self.iir = node
-            return self.generic_visit(path, node_name, node)
+            res = self.generic_visit(path, node_name, node)
+            for temp_name in self.inline_temp_exprs:
+                assert temp_name in node.temporary_fields, "Tried to inline api field."
+                node.fields.pop(temp_name)
+                node.fields_extents.pop(temp_name)
+            return res
 
         def visit_Assign(self, path: tuple, node_name: str, node: gt_ir.Assign):
-            # self.visit(node.value)
-            # self.visit(node.target)
-            if node_name in self.temp_counts:
-                stop=1
+            target_name = node.target.name
+            if target_name in self.inline_temp_exprs:
+                self.inline_temp_exprs[target_name] = node.value
+                return False, None
+
+            keep_node, value_node = self.generic_visit(path, "", node.value)
+            if keep_node:
+                node.value = value_node
+            keep_node, target_node = self.generic_visit(path, target_name, node.target)
+            if keep_node:
+                node.target = target_node
 
             return True, node
 
@@ -1322,22 +1340,15 @@ class TemporaryInliningPass(TransformPass):
             self, path: tuple, node_name: str, node: gt_ir.FieldRef
         ) -> Tuple[bool, gt_ir.FieldRef]:
             field_name = node.name
-            is_full_field = False
-
-            return True, node
-
-        def visit_VarRef(
-            self, path: tuple, node_name: str, node: gt_ir.VarRef
-        ) -> Tuple[bool, gt_ir.FieldRef]:
-            var_name = node.name
-
+            if field_name in self.inline_temp_exprs:
+                return True, self.inline_temp_exprs[field_name]
             return True, node
 
     def apply(self, transform_data: TransformData) -> TransformData:
-        count_temporaries = self.CountTemporaries()
-        temp_counts = count_temporaries(transform_data.implementation_ir)
+        collect_temporaries = self.CollectTemporaries()
+        inline_temps: Set[str] = collect_temporaries(transform_data.implementation_ir)
 
-        temporary_inliner = self.TemporaryInliner(temp_counts)
+        temporary_inliner = self.TemporaryInliner(inline_temps)
         transform_data.implementation_ir = temporary_inliner(transform_data.implementation_ir)
         return transform_data
 
