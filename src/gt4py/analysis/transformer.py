@@ -113,8 +113,7 @@ class IRTransformer:
         DemoteLocalTemporariesToVariablesPass.apply(self.transform_data)
 
         # Inline temporary variables by replacing them with the code that generates them
-        temporary_inlining_pass = TemporaryInliningPass()
-        temporary_inlining_pass.apply(self.transform_data)
+        TemporaryInliningPass.apply(self.transform_data)
 
         # prune some stages that don't have effect
         HousekeepingPass.apply(self.transform_data)

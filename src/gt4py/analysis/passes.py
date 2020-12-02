@@ -1299,6 +1299,11 @@ class DemoteLocalTemporariesToVariablesPass(TransformPass):
 
 class TemporaryInliningPass(TransformPass):
     class CollectTemporaries(gt_ir.IRNodeVisitor):
+        @classmethod
+        def apply(cls, node: gt_ir.StencilImplementation) -> Set[str]:
+            collector = cls()
+            return collector(node)
+
         def __call__(self, node: gt_ir.StencilImplementation) -> Set[str]:
             assert isinstance(node, gt_ir.StencilImplementation)
             self.multistage_name: str = ""
@@ -1312,22 +1317,28 @@ class TemporaryInliningPass(TransformPass):
             self.multistage_name = node.name
             self.generic_visit(node)
 
-        def visit_Assign(self, node: gt_ir.Assign):
+        def visit_Assign(self, node: gt_ir.Assign) -> None:
             target_name = node.target.name
             if target_name in self.temp_multistages:
                 self.temp_multistages[target_name] = self.multistage_name
-            else:
-                self.generic_visit(node.target)
+            self.generic_visit(node.target)
             self.generic_visit(node.value)
 
         def visit_FieldRef(self, node: gt_ir.FieldRef) -> None:
             field_name = node.name
             if field_name in self.temp_multistages:
                 assert len(self.temp_multistages[field_name]) > 0
-                if self.multistage_name != self.temp_multistages[field_name]:
+                if self.multistage_name != self.temp_multistages[field_name] or any(
+                    val != 0 for val in node.offset.values()
+                ):
                     del self.temp_multistages[field_name]
 
     class TemporaryInliner(gt_ir.IRNodeMapper):
+        @classmethod
+        def apply(cls, node: gt_ir.StencilImplementation, demotables: Set[str]) -> None:
+            instance = cls(demotables)
+            return instance(node)
+
         def __init__(self, inline_temps: Set[str]):
             self.inline_temp_exprs: Dict[str, gt_ir.IIRNode] = {
                 temp_name: None for temp_name in inline_temps
@@ -1365,12 +1376,11 @@ class TemporaryInliningPass(TransformPass):
                 return True, self.inline_temp_exprs[field_name]
             return True, node
 
-    def apply(self, transform_data: TransformData) -> TransformData:
-        collect_temporaries = self.CollectTemporaries()
-        inline_temps: Set[str] = collect_temporaries(transform_data.implementation_ir)
+    @classmethod
+    def apply(cls, transform_data: TransformData) -> None:
+        inline_temps = cls.CollectTemporaries.apply(transform_data.implementation_ir)
         if len(inline_temps) > 0:
-            temporary_inliner = self.TemporaryInliner(inline_temps)
-            transform_data.implementation_ir = temporary_inliner(transform_data.implementation_ir)
+            cls.TemporaryInliner.apply(transform_data.implementation_ir, inline_temps)
         return transform_data
 
 
