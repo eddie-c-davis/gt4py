@@ -203,9 +203,11 @@ def allocate_cpu(default_origin, shape, layout_map, dtype, alignment_bytes):
 
 def allocate_gpu(default_origin, shape, layout_map, dtype, alignment_bytes):
     def allocate_f(size, dtype):
+        allocator = cp.cuda.get_allocator()
         cp.cuda.set_allocator(cp.cuda.malloc_managed)
         device_buffer = cp.empty(size, dtype)
         array = cpu_view(device_buffer)
+        cp.cuda.set_allocator(allocator)
         return array, device_buffer
 
     return allocate(default_origin, shape, layout_map, dtype, alignment_bytes, allocate_f)
