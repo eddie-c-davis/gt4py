@@ -1257,3 +1257,27 @@ def test_layout_from_strides(layout, shape):
     _, array = gt_storage_utils.allocate_cpu((0, 0, 0), shape, layout, np.float64, 8)
     proposed_layout = gt_storage_utils.layout_from_strides(array.strides)
     assert gt_storage_utils.is_compatible_layout(array.strides, shape, proposed_layout)
+
+
+@pytest.mark.requires_gpu
+def test_add_gpu_managed():
+    shape = (5, 5, 5)
+    halo = (1, 1, 1)
+    managed = "gt4py"
+
+    s1 = gt_store.storage(
+        np.random.randn(*shape),
+        halo=halo,
+        device="gpu",
+        managed=managed,
+    )
+
+    s2 = gt_store.storage(
+        np.random.randn(*shape),
+        halo=halo,
+        device="gpu",
+        managed=managed,
+    )
+
+    s3 = s1 + s2
+    s1[:] = s3
