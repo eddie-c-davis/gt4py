@@ -2,7 +2,7 @@
 #
 # GT4Py - GridTools4Py - GridTools for Python
 #
-# Copyright (c) 2014-2020, ETH Zurich
+# Copyright (c) 2014-2021, ETH Zurich
 # All rights reserved.
 #
 # This file is part the GT4Py project and the GridTools framework.
@@ -685,8 +685,6 @@ class AxisBound(Node):
     level = attribute(of=UnionOf[LevelMarker, VarRef])
     offset = attribute(of=int, default=0)
     loc = attribute(of=Location, optional=True)
-    name: str
-    index: List
 
 
 @attribclass

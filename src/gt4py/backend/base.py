@@ -2,7 +2,7 @@
 #
 # GT4Py - GridTools4Py - GridTools for Python
 #
-# Copyright (c) 2014-2020, ETH Zurich
+# Copyright (c) 2014-2021, ETH Zurich
 # All rights reserved.
 #
 # This file is part the GT4Py project and the GridTools framework.
@@ -221,8 +221,8 @@ class CLIBackendMixin(Backend):
             If the backend does not support the bindings language
 
         """
-        languages = getattr(self, "languages") or {"bindings": {}}
-        name = getattr(self, "name") or ""
+        languages = getattr(self, "languages", {"bindings": {}})
+        name = getattr(self, "name", "")
         if language_name not in languages["bindings"]:
             raise NotImplementedError(
                 f"Backend {name} does not implement bindings for {language_name}"
@@ -259,6 +259,7 @@ class BaseBackend(Backend):
         stencil_class = getattr(stencil_module, stencil_class_name)
         stencil_class.__module__ = self.builder.module_qualname
         stencil_class._gt_id_ = self.builder.stencil_id.version
+        stencil_class._file_name = file_name
         stencil_class.definition_func = staticmethod(self.builder.definition)
 
         return stencil_class
@@ -529,9 +530,10 @@ class BaseModuleGenerator(abc.ABC):
             post_run=self.generate_post_run(),
             implementation=self.generate_implementation(),
         )
-        module_source = gt_utils.text.format_source(
-            module_source, line_length=self.SOURCE_LINE_LENGTH
-        )
+        if options["format_source"]:
+            module_source = gt_utils.text.format_source(
+                module_source, line_length=self.SOURCE_LINE_LENGTH
+            )
 
         return module_source
 

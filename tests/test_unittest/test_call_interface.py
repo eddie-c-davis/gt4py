@@ -2,7 +2,7 @@
 #
 # GT4Py - GridTools4Py - GridTools for Python
 #
-# Copyright (c) 2014-2020, ETH Zurich
+# Copyright (c) 2014-2021, ETH Zurich
 # All rights reserved.
 #
 # This file is part the GT4Py project and the GridTools framework.
@@ -42,79 +42,8 @@ def stencil(
         field3 = param * field2
 
 
-def test_assert_same_shape():
-    A = gt_storage.ones(
-        backend="gtmc", dtype=np.float64, shape=(3, 3, 3), default_origin=(0, 0, 0)
-    )
-    B = gt_storage.ones(
-        backend="gtx86", dtype=np.float64, shape=(3, 3, 3), default_origin=(2, 2, 2)
-    )
-    C = gt_storage.ones(
-        backend="numpy", dtype=np.float32, shape=(3, 3, 3), default_origin=(0, 1, 0)
-    )
-    stencil(A, B, C, param=3.0, origin=(1, 1, 1), domain=(1, 1, 1))
-
-    B = gt_storage.ones(
-        backend="gtx86", dtype=np.float64, shape=(3, 3, 3), default_origin=(2, 2, 2)
-    )
-    C = gt_storage.ones(
-        backend="numpy", dtype=np.float32, shape=(3, 3, 3), default_origin=(0, 1, 0)
-    )
-    stencil(
-        A,
-        B,
-        C,
-        param=3.0,
-        origin=dict(field1=(2, 2, 2), field2=(0, 0, 0), field3=(1, 1, 1)),
-        domain=(1, 1, 1),
-    )
-    A = gt_storage.ones(
-        backend="gtmc", dtype=np.float64, shape=(5, 5, 5), default_origin=(0, 0, 0)
-    )
-    A = A[1:-1, 1:-1, 1:-1]
-    A.is_stencil_view = True
-    stencil(
-        A,
-        B,
-        C,
-        param=3.0,
-        origin=dict(field1=(2, 2, 2), field2=(0, 0, 0), field3=(1, 1, 1)),
-        domain=(1, 1, 1),
-    )
-
-    try:
-        C = gt_storage.ones(
-            backend="numpy", dtype=np.float32, shape=(5, 5, 5), default_origin=(0, 1, 0)
-        )
-        stencil(A, B, C, param=3.0, origin=(1, 1, 1), domain=(1, 1, 1))
-    except ValueError:
-        pass
-    else:
-        assert False
-
-    try:
-
-        C = gt_storage.ones(
-            backend="numpy", dtype=np.float32, shape=(5, 5, 5), default_origin=(0, 1, 0)
-        )
-        stencil(
-            A,
-            B,
-            C,
-            param=3.0,
-            origin=dict(field1=(2, 2, 2), field2=(0, 0, 0), field3=(1, 1, 1)),
-            domain=(1, 1, 1),
-        )
-    except ValueError:
-        pass
-    else:
-        assert False
-
-
 def test_origin_selection():
-    A = gt_storage.ones(
-        backend="gtmc", dtype=np.float64, shape=(3, 3, 3), default_origin=(0, 0, 0)
-    )
+    A = gt_storage.ones(backend="gtmc", dtype=np.float64, shape=(3, 3, 3), default_origin=(0, 0, 0))
     B = gt_storage.ones(
         backend="gtx86", dtype=np.float64, shape=(3, 3, 3), default_origin=(2, 2, 2)
     )
@@ -130,9 +59,7 @@ def test_origin_selection():
     assert np.sum(np.asarray(B)) == 33
     assert np.sum(np.asarray(C)) == 47
 
-    A = gt_storage.ones(
-        backend="gtmc", dtype=np.float64, shape=(3, 3, 3), default_origin=(0, 0, 0)
-    )
+    A = gt_storage.ones(backend="gtmc", dtype=np.float64, shape=(3, 3, 3), default_origin=(0, 0, 0))
     B = gt_storage.ones(
         backend="gtx86", dtype=np.float64, shape=(3, 3, 3), default_origin=(2, 2, 2)
     )
@@ -148,9 +75,7 @@ def test_origin_selection():
     assert np.sum(np.asarray(B)) == 33
     assert np.sum(np.asarray(C)) == 47
 
-    A = gt_storage.ones(
-        backend="gtmc", dtype=np.float64, shape=(3, 3, 3), default_origin=(0, 0, 0)
-    )
+    A = gt_storage.ones(backend="gtmc", dtype=np.float64, shape=(3, 3, 3), default_origin=(0, 0, 0))
     B = gt_storage.ones(
         backend="gtx86", dtype=np.float64, shape=(3, 3, 3), default_origin=(2, 2, 2)
     )
@@ -168,9 +93,7 @@ def test_origin_selection():
 
 
 def test_domain_selection():
-    A = gt_storage.ones(
-        backend="gtmc", dtype=np.float64, shape=(3, 3, 3), default_origin=(0, 0, 0)
-    )
+    A = gt_storage.ones(backend="gtmc", dtype=np.float64, shape=(3, 3, 3), default_origin=(0, 0, 0))
     B = gt_storage.ones(
         backend="gtx86", dtype=np.float64, shape=(3, 3, 3), default_origin=(2, 2, 2)
     )
@@ -186,9 +109,7 @@ def test_domain_selection():
     assert np.sum(np.asarray(B)) == 33
     assert np.sum(np.asarray(C)) == 47
 
-    A = gt_storage.ones(
-        backend="gtmc", dtype=np.float64, shape=(3, 3, 3), default_origin=(0, 0, 0)
-    )
+    A = gt_storage.ones(backend="gtmc", dtype=np.float64, shape=(3, 3, 3), default_origin=(0, 0, 0))
     B = gt_storage.ones(
         backend="gtx86", dtype=np.float64, shape=(3, 3, 3), default_origin=(2, 2, 2)
     )
