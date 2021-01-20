@@ -17,7 +17,14 @@
 import sys
 from itertools import count, product
 
+import numpy as np
 import pytest
+
+
+try:
+    import cupy as cp
+except ImportError:
+    cp = None
 
 import gt4py as gt
 import gt4py.definitions as gt_definitions
@@ -174,7 +181,19 @@ class SuiteMeta(type):
             hyp_wrapper(test)
 
         cls_dict["test_generation"] = pytest.mark.parametrize(
-            "test", [test for test in cls_dict["tests"] if test["suite"] == cls_name]
+            "test",
+            [
+                pytest.param(
+                    test,
+                    marks=(
+                        [pytest.mark.requires_gpu]
+                        if gt_backend.from_name(test["backend"]).compute_device == "gpu"
+                        else ()
+                    ),
+                )
+                for test in cls_dict["tests"]
+                if test["suite"] == cls_name
+            ],
         )(generation_test_wrapper)
 
     def parametrize_implementation_tests(cls_name, bases, cls_dict):
@@ -494,12 +513,11 @@ class StencilTestSuite(metaclass=SuiteMeta):
                 if isinstance(f, np.ndarray):
                     patched_f = np.empty(shape=patched_shape)
                     patched_f[patching_slices] = f
-                    inputs[k] = gt_storage.from_array(
+                    inputs[k] = gt_storage.storage(
                         patched_f,
                         dtype=test["definition"].__annotations__[k],
-                        shape=patched_f.shape,
-                        default_origin=patched_origin,
-                        backend=test["backend"],
+                        halo=patched_origin,
+                        defaults=test["backend"],
                     )
 
                 else:
@@ -508,7 +526,10 @@ class StencilTestSuite(metaclass=SuiteMeta):
             # remove unused input parameters
             inputs = {key: value for key, value in inputs.items() if value is not None}
 
-            validation_fields = {name: np.array(field, copy=True) for name, field in inputs.items()}
+            validation_fields = {
+                name: field.to_numpy() if name in implementation.field_info else np.array(field)
+                for name, field in inputs.items()
+            }
 
             implementation(**inputs, origin=patched_origin, exec_info=exec_info)
             domain = exec_info["domain"]
@@ -555,16 +576,15 @@ class StencilTestSuite(metaclass=SuiteMeta):
                         slice(new_boundary[d][0], new_boundary[d][0] + domain[d])
                         for d in range(len(domain))
                     ]
-
-                    if gt_backend.from_name(value.backend).storage_info["device"] == "gpu":
-                        value.synchronize()
-                        value = value.data.get()
+                    value.synchronize()
+                    if cp is not None:
+                        value = cp.asnumpy(value)
                     else:
-                        value = value.data
+                        value = np.asarray(value)
 
                     np.testing.assert_allclose(
-                        value[domain_slice],
-                        expected_value[domain_slice],
+                        np.asarray(value)[domain_slice],
+                        np.asarray(expected_value)[domain_slice],
                         rtol=RTOL,
                         atol=ATOL,
                         equal_nan=EQUAL_NAN,

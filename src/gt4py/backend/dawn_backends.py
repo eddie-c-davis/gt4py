@@ -371,9 +371,9 @@ pyext_module.run_computation(list(_domain_), {run_args}, exec_info)
 for name, other_name in itertools.combinations(field_args, 2):
     field = field_args[name]
     other_field = field_args[other_name]
-    if field.mask == other_field.mask and not other_field.shape == field.shape:
+    if other_field.shape != field.shape:
         raise ValueError(
-            f"The fields {name} and {other_name} have the same mask but different shapes."
+            f"The fields {name} and {other_name} have different shapes."
         )"""
 
         return "\n".join(self.backend_pre_run() + [field_size_check])
@@ -642,8 +642,10 @@ class DawnGTX86Backend(BaseDawnBackend):
 
     name = "dawn:gtx86"
     options = _DAWN_BACKEND_OPTIONS
+    compute_device = "cpu"
+    assert_specified_layout = True
     # ignore types because mypy is bugging out on those
-    storage_info = gt_backend.GTX86Backend.storage_info  # type: ignore
+    storage_defaults = gt_backend.GTX86Backend.storage_defaults  # type: ignore
     languages = gt_backend.GTX86Backend.languages  # type: ignore
 
     def generate_extension(self, **kwargs: Any) -> Tuple[str, str]:
@@ -659,8 +661,10 @@ class DawnGTMCBackend(BaseDawnBackend):
 
     name = "dawn:gtmc"
     options = _DAWN_BACKEND_OPTIONS
+    compute_device = "cpu"
+    assert_specified_layout = True
     # ignore types because mypy is bugging out on those
-    storage_info = gt_backend.GTMCBackend.storage_info  # type: ignore
+    storage_defaults = gt_backend.GTMCBackend.storage_defaults  # type: ignore
     languages = gt_backend.GTMCBackend.languages  # type: ignore
 
     def generate_extension(self, **kwargs: Any) -> Tuple[str, str]:
@@ -677,8 +681,10 @@ class DawnGTCUDABackend(BaseDawnBackend):
 
     name = "dawn:gtcuda"
     options = _DAWN_BACKEND_OPTIONS
+    compute_device = "gpu"
+    assert_specified_layout = True
     # ignore types because mypy is bugging out on those
-    storage_info = gt_backend.GTCUDABackend.storage_info  # type: ignore
+    storage_defaults = gt_backend.GTCUDABackend.storage_defaults  # type: ignore
     languages = gt_backend.GTCUDABackend.languages  # type: ignore
 
     def generate_extension(self, **kwargs: Any) -> Tuple[str, str]:
@@ -694,8 +700,10 @@ class DawnNaiveBackend(BaseDawnBackend):
 
     name = "dawn:naive"
     options = _DAWN_BACKEND_OPTIONS
+    compute_device = "cpu"
+    assert_specified_layout = True
     # ignore types because mypy is bugging out on those
-    storage_info = gt_backend.GTX86Backend.storage_info  # type: ignore
+    storage_defaults = gt_backend.GTX86Backend.storage_defaults  # type: ignore
     languages = gt_backend.GTX86Backend.languages  # type: ignore
 
     def generate_extension(self, **kwargs: Any) -> Tuple[str, str]:
@@ -711,8 +719,10 @@ class DawnOptBackend(BaseDawnBackend):
 
     name = "dawn:cxxopt"
     options = _DAWN_BACKEND_OPTIONS
+    compute_device = "cpu"
+    assert_specified_layout = True
     # ignore types because mypy is bugging out on those
-    storage_info = gt_backend.GTX86Backend.storage_info  # type: ignore
+    storage_defaults = gt_backend.GTX86Backend.storage_defaults  # type: ignore
     languages = gt_backend.GTX86Backend.languages  # type: ignore
 
     def generate_extension(self, **kwargs: Any) -> Tuple[str, str]:
@@ -729,8 +739,10 @@ class DawnCUDABackend(BaseDawnBackend):
 
     name = "dawn:cuda"
     options = _DAWN_BACKEND_OPTIONS
+    compute_device = "gpu"
+    assert_specified_layout = True
     # ignore types because mypy is bugging out on those
-    storage_info = gt_backend.GTCUDABackend.storage_info  # type: ignore
+    storage_defaults = gt_backend.GTCUDABackend.storage_defaults  # type: ignore
     languages = gt_backend.GTCUDABackend.languages  # type: ignore
 
     def generate_extension(self, **kwargs: Any) -> Tuple[str, str]:

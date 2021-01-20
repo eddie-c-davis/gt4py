@@ -21,6 +21,7 @@ import numpy as np
 from gt4py import backend as gt_backend
 from gt4py import definitions as gt_definitions
 from gt4py import ir as gt_ir
+from gt4py.storage import StorageDefaults
 from gt4py.utils import text as gt_text
 
 from .python_generator import PythonSourceGenerator
@@ -35,7 +36,7 @@ class DebugSourceGenerator(PythonSourceGenerator):
         if origin is None:
             origin = "{origin_arg}['{name}']".format(origin_arg=self.origin_arg_name, name=name)
         source_lines = [
-            "{name}{marker} = _Accessor({name}, {origin})".format(
+            "{name}{marker} = _Accessor(np.asarray({name}), {origin})".format(
                 marker=self.origin_marker, name=name, origin=origin
             )
         ]
@@ -218,23 +219,15 @@ def debug_is_compatible_layout(field):
     return sum(field.shape) > 0
 
 
-def debug_is_compatible_type(field):
-    return isinstance(field, np.ndarray)
-
-
 @gt_backend.register
 class DebugBackend(gt_backend.BaseBackend, gt_backend.PurePythonBackendCLIMixin):
     """Pure Python backend, unoptimized for debugging."""
 
     name = "debug"
     options = {}
-    storage_info = {
-        "alignment": 1,
-        "device": "cpu",
-        "layout_map": debug_layout,
-        "is_compatible_layout": debug_is_compatible_layout,
-        "is_compatible_type": debug_is_compatible_type,
-    }
+    compute_device = "cpu"
+    assert_specified_layout = False
+    storage_defaults = StorageDefaults()
 
     languages = {"computation": "python", "bindings": []}
 

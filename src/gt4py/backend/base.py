@@ -24,9 +24,11 @@ from typing import TYPE_CHECKING, Any, Callable, ClassVar, Dict, List, Optional,
 
 import jinja2
 
+import gt4py
 from gt4py import definitions as gt_definitions
 from gt4py import ir as gt_ir
 from gt4py import utils as gt_utils
+from gt4py.storage.default_parameters import StorageDefaults
 
 from . import pyext_builder
 
@@ -42,18 +44,29 @@ def from_name(name: str) -> Type["Backend"]:
     return REGISTRY.get(name, None)
 
 
-def register(backend_cls: Type["Backend"]) -> None:
+def register(backend_cls):
     assert issubclass(backend_cls, Backend) and backend_cls.name is not None
 
-    if isinstance(backend_cls.name, str):
-        return REGISTRY.register(backend_cls.name, backend_cls)
-
-    else:
+    if not isinstance(backend_cls.name, str):
         raise ValueError(
             "Invalid 'name' attribute ('{name}') in backend class '{cls}'".format(
                 name=backend_cls.name, cls=backend_cls
             )
         )
+
+    if isinstance(backend_cls.storage_defaults, gt4py.storage.default_parameters.StorageDefaults):
+        gt4py.storage.register_storage_defaults(
+            name=backend_cls.name, defaults=backend_cls.storage_defaults
+        )
+    else:
+        raise ValueError(f"Invalid 'storage_defaults' attribute in backend class '{backend_cls}'")
+
+    return REGISTRY.register(backend_cls.name, backend_cls)
+
+
+def remove(backend_key):
+    REGISTRY.pop(backend_key)
+    gt4py.storage.default_parameters.REGISTRY.pop(backend_key)
 
 
 class Backend(abc.ABC):
@@ -69,14 +82,11 @@ class Backend(abc.ABC):
     #:    - type
     options: ClassVar[Dict[str, Any]]
 
-    #: Backend-specific storage parametrization:
-    #:
-    #:  - "alignment": in bytes
-    #:  - "device": "cpu" | "gpu"
-    #:  - "layout_map": callback converting a mask to a layout
-    #:  - "is_compatible_layout": callback checking if a storage has compatible layout
-    #:  - "is_compatible_type": callback checking if storage has compatible type
-    storage_info: ClassVar[Dict[str, Any]]
+    #: the processing unit where the generated code will run, one of , "cpu" or "gpu"
+    compute_device: ClassVar[str] = "cpu"
+
+    #: Backend-specific default storage parametrization
+    storage_defaults: ClassVar[StorageDefaults] = StorageDefaults()
 
     #: Language support:
     #:
@@ -644,7 +654,10 @@ pyext_module = gt_utils.make_module_from_file(
         api_fields = set(field.name for field in definition_ir.api_fields)
         for arg in definition_ir.api_signature:
             if arg.name not in self.args_data["unreferenced"]:
-                args.append(arg.name)
+                if from_name(self.backend_name).storage_defaults.device == "cpu":
+                    args.append(f"np.asarray({arg.name})")
+                else:
+                    args.append(arg.name)
                 if arg.name in api_fields:
                     args.append("list(_origin_['{}'])".format(arg.name))
 

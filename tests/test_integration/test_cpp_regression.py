@@ -52,20 +52,19 @@ def get_reference(test_name, backend, domain, origins, shapes, masks=None):
             res[k] = np.float_(data)
         else:
             try:
-                field = gt_store.from_array(
+
+                field = gt_store.storage(
                     data,
                     dtype=np.float_,
-                    default_origin=origins[k],
-                    shape=shapes[k],
-                    backend=backend.name,
+                    halo=origins[k],
+                    defaults=backend.name,
                 )
             except KeyError:
-                field = gt_store.from_array(
+                field = gt_store.storage(
                     data,
                     dtype=np.float_,
-                    default_origin=origins[k[: -len("_reference")]],
-                    shape=shapes[k[: -len("_reference")]],
-                    backend=backend.name,
+                    halo=origins[k[: -len("_reference")]],
+                    defaults=backend.name,
                 )
 
             res[k] = field
@@ -92,8 +91,7 @@ def run_horizontal_diffusion(backend, id_version, domain):
         "horizontal_diffusion", backend, id_version=id_version, rebuild=False
     )
     for k in arg_fields:
-        if hasattr(arg_fields[k], "host_to_device"):
-            arg_fields[k].host_to_device()
+        arg_fields[k].host_to_device()
     testmodule.run(
         **arg_fields,
         _domain_=domain,
@@ -102,10 +100,12 @@ def run_horizontal_diffusion(backend, id_version, domain):
     )
 
     for k in validate_field_names:
-        if hasattr(arg_fields[k], "synchronize"):
-            arg_fields[k].device_to_host(force=True)
+        arg_fields[k].device_to_host(
+            force=True
+        )  # directly called `run`, therefore storages are not marked modified
+
         np.testing.assert_allclose(
-            arg_fields[k].view(np.ndarray), validate_fields[k + "_reference"].view(np.ndarray)
+            arg_fields[k].to_numpy(), validate_fields[k + "_reference"].to_numpy()
         )
 
 
@@ -142,8 +142,7 @@ def run_tridiagonal_solver(backend, id_version, domain):
         "tridiagonal_solver", backend, id_version=id_version, rebuild=False
     )
     for k in arg_fields:
-        if hasattr(arg_fields[k], "host_to_device"):
-            arg_fields[k].host_to_device()
+        arg_fields[k].host_to_device()
     testmodule.run(
         **arg_fields,
         _domain_=domain,
@@ -152,10 +151,12 @@ def run_tridiagonal_solver(backend, id_version, domain):
     )
 
     for k in validate_field_names:
-        if hasattr(arg_fields[k], "synchronize"):
-            arg_fields[k].device_to_host(force=True)
+        print(type(arg_fields[k]))
+        arg_fields[k].device_to_host(
+            force=True
+        )  # directly called `run`, therefore storages are not marked modified
         np.testing.assert_allclose(
-            arg_fields[k].view(np.ndarray), validate_fields[k + "_reference"].view(np.ndarray)
+            arg_fields[k].to_numpy(), validate_fields[k + "_reference"].to_numpy()
         )
 
 
@@ -209,10 +210,11 @@ def run_vertical_advection_dycore(backend, id_version, domain):
     )
 
     for k in validate_field_names:
-        if hasattr(arg_fields[k], "synchronize"):
-            arg_fields[k].device_to_host(force=True)
+        arg_fields[k].device_to_host(
+            force=True
+        )  # directly called `run`, therefore storages are not marked modified
         np.testing.assert_allclose(
-            arg_fields[k].view(np.ndarray), validate_fields[k + "_reference"].view(np.ndarray)
+            arg_fields[k].to_numpy(), validate_fields[k + "_reference"].to_numpy()
         )
 
 
@@ -243,8 +245,7 @@ def run_large_k_interval(backend, id_version, domain):
         "large_k_interval", backend, id_version=id_version, rebuild=False
     )
     for k in arg_fields:
-        if hasattr(arg_fields[k], "host_to_device"):
-            arg_fields[k].host_to_device()
+        arg_fields[k].host_to_device()
     testmodule.run(
         **arg_fields,
         _domain_=domain,
@@ -253,10 +254,11 @@ def run_large_k_interval(backend, id_version, domain):
     )
 
     for k in validate_field_names:
-        if hasattr(arg_fields[k], "synchronize"):
-            arg_fields[k].device_to_host(force=True)
+        arg_fields[k].device_to_host(
+            force=True
+        )  # directly called `run`, therefore storages are not marked modified
         np.testing.assert_allclose(
-            arg_fields[k].view(np.ndarray), validate_fields[k + "_reference"].view(np.ndarray)
+            arg_fields[k].to_numpy(), validate_fields[k + "_reference"].to_numpy()
         )
 
 

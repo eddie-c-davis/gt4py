@@ -18,16 +18,16 @@ import abc
 import functools
 import numbers
 import os
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple, Type, Union
 
 import jinja2
-import numpy as np
 
 from gt4py import backend as gt_backend
 from gt4py import definitions as gt_definitions
 from gt4py import gt_src_manager
 from gt4py import ir as gt_ir
 from gt4py import utils as gt_utils
+from gt4py.storage import StorageDefaults
 from gt4py.utils import text as gt_text
 
 from . import pyext_builder
@@ -35,90 +35,60 @@ from . import pyext_builder
 
 if TYPE_CHECKING:
     from gt4py.stencil_object import StencilObject
-    from gt4py.storage.storage import Storage
 
 
-def make_x86_layout_map(mask: Tuple[int, ...]) -> Tuple[Optional[int], ...]:
-    ctr = iter(range(sum(mask)))
-    if len(mask) < 3:
-        layout: List[Optional[int]] = [next(ctr) if m else None for m in mask]
-    else:
-        swapped_mask: List[Optional[int]] = [*mask[3:], *mask[:3]]
-        layout = [next(ctr) if m else None for m in swapped_mask]
+def gtx86_layout(dims: Sequence[str] = "IJK") -> Tuple[int, ...]:
 
-        layout = [*layout[-3:], *layout[:-3]]
+    sorted_dims = sorted(ax for ax in "IJK" if ax in dims) + sorted(
+        ax for ax in dims if ax.isdecimal()
+    )
 
-    return tuple(layout)
+    n_data_dims = sum(ax not in "IJK" for ax in dims)
+    sorted_layout = list(range(len(dims)))
+    sorted_layout_iter = iter(sorted_layout[n_data_dims:] + sorted_layout[:n_data_dims])
 
+    res = [-1] * len(dims)
 
-def x86_is_compatible_layout(field: "Storage") -> bool:
-    stride = 0
-    layout_map = make_x86_layout_map(field.mask)
-    if len(field.strides) < len(layout_map):
-        return False
-    for dim in reversed(np.argsort(layout_map)):
-        if field.strides[dim] < stride:
-            return False
-        stride = field.strides[dim]
-    return True
+    for d in sorted_dims:
+        res[dims.index(d)] = next(sorted_layout_iter)
+    assert -1 not in res
+
+    return tuple(int(r) for r in res)
 
 
-def gtcpu_is_compatible_type(field: "Storage") -> bool:
-    return isinstance(field, np.ndarray)
+def gtmc_layout(dims: Sequence[str] = "IJK") -> Tuple[int, ...]:
+
+    sorted_dims = sorted(ax for ax in "IJK" if ax in dims) + sorted(
+        ax for ax in dims if ax.isdecimal()
+    )
+    sorted_layout = list(reversed(range(len(dims))))
+    if "J" in dims and "K" in dims:
+        tmp = sorted_layout[sorted_dims.index("K")]
+        sorted_layout[sorted_dims.index("K")] = sorted_layout[sorted_dims.index("J")]
+        sorted_layout[sorted_dims.index("J")] = tmp
+    sorted_layout_iter = iter(sorted_layout)
+
+    res = [-1] * len(dims)
+
+    for d in sorted_dims:
+        res[dims.index(d)] = next(sorted_layout_iter)
+    assert -1 not in res
+
+    return tuple(int(r) for r in res)
 
 
-def make_mc_layout_map(mask: Tuple[int, ...]) -> Tuple[Optional[int], ...]:
-    ctr = reversed(range(sum(mask)))
-    if len(mask) < 3:
-        layout: List[Optional[int]] = [next(ctr) if m else None for m in mask]
-    else:
-        swapped_mask: List[Optional[int]] = list(mask)
-        tmp = swapped_mask[1]
-        swapped_mask[1] = swapped_mask[2]
-        swapped_mask[2] = tmp
+def gtcuda_layout(dims: Sequence[str] = "IJK") -> Tuple[int, ...]:
 
-        layout = [next(ctr) if m else None for m in swapped_mask]
+    sorted_dims = sorted(ax for ax in "IJK" if ax in dims) + sorted(
+        ax for ax in dims if ax.isdecimal()
+    )
+    sorted_layout = iter(reversed(range(len(dims))))
+    res = [-1] * len(dims)
 
-        tmp = layout[1]
-        layout[1] = layout[2]
-        layout[2] = tmp
-
-    return tuple(layout)
-
-
-def mc_is_compatible_layout(field: "Storage") -> bool:
-    stride = 0
-    layout_map = make_mc_layout_map(field.mask)
-    if len(field.strides) < len(layout_map):
-        return False
-    for dim in reversed(np.argsort(layout_map)):
-        if field.strides[dim] < stride:
-            return False
-        stride = field.strides[dim]
-    return True
-
-
-def cuda_layout(mask: Tuple[int, ...]) -> Tuple[Optional[int], ...]:
-    ctr = reversed(range(sum(mask)))
-    return tuple([next(ctr) if m else None for m in mask])
-
-
-def cuda_is_compatible_layout(field: "Storage") -> bool:
-    stride = 0
-    layout_map = cuda_layout(field.mask)
-    if len(field.strides) < len(layout_map):
-        return False
-    for dim in reversed(np.argsort(layout_map)):
-        if field.strides[dim] < stride:
-            return False
-        stride = field.strides[dim]
-    return True
-
-
-def cuda_is_compatible_type(field: Any) -> bool:
-    from gt4py.storage.storage import ExplicitlySyncedGPUStorage, GPUStorage
-
-    return isinstance(field, (GPUStorage, ExplicitlySyncedGPUStorage))
+    for d in sorted_dims:
+        res[dims.index(d)] = next(sorted_layout)
+    assert -1 not in res
+    return tuple(int(r) for r in res)
 
 
 class _MaxKOffsetExtractor(gt_ir.IRNodeVisitor):
@@ -643,13 +613,9 @@ class GTX86Backend(BaseGTBackend):
 
     name = "gtx86"
     options = BaseGTBackend.GT_BACKEND_OPTS
-    storage_info = {
-        "alignment": 1,
-        "device": "cpu",
-        "layout_map": make_x86_layout_map,
-        "is_compatible_layout": x86_is_compatible_layout,
-        "is_compatible_type": gtcpu_is_compatible_type,
-    }
+    compute_device = "cpu"
+    assert_specified_layout = True
+    storage_defaults = StorageDefaults(layout=gtx86_layout)
 
     languages = {"computation": "c++", "bindings": ["python"]}
 
@@ -664,13 +630,9 @@ class GTMCBackend(BaseGTBackend):
 
     name = "gtmc"
     options = BaseGTBackend.GT_BACKEND_OPTS
-    storage_info = {
-        "alignment": 8,
-        "device": "cpu",
-        "layout_map": make_mc_layout_map,
-        "is_compatible_layout": mc_is_compatible_layout,
-        "is_compatible_type": gtcpu_is_compatible_type,
-    }
+    compute_device = "cpu"
+    assert_specified_layout = True
+    storage_defaults = StorageDefaults(alignment_size=8, layout=gtmc_layout)
 
     languages = {"computation": "c++", "bindings": ["python"]}
 
@@ -680,22 +642,10 @@ class GTMCBackend(BaseGTBackend):
 
 class GTCUDAPyModuleGenerator(gt_backend.CUDAPyExtModuleGenerator):
     def generate_pre_run(self) -> str:
-        field_names = [
-            key
-            for key in self.args_data["field_info"]
-            if self.args_data["field_info"][key] is not None
-        ]
-
-        return "\n".join([f + ".host_to_device()" for f in field_names])
+        return ""
 
     def generate_post_run(self) -> str:
-        output_field_names = [
-            name
-            for name, info in self.args_data["field_info"].items()
-            if info is not None and info.access == gt_definitions.AccessKind.READ_WRITE
-        ]
-
-        return "\n".join([f + "._set_device_modified()" for f in output_field_names])
+        return ""
 
 
 @gt_backend.register
@@ -707,13 +657,9 @@ class GTCUDABackend(BaseGTBackend):
 
     name = "gtcuda"
     options = BaseGTBackend.GT_BACKEND_OPTS
-    storage_info = {
-        "alignment": 32,
-        "device": "gpu",
-        "layout_map": cuda_layout,
-        "is_compatible_layout": cuda_is_compatible_layout,
-        "is_compatible_type": cuda_is_compatible_type,
-    }
+    compute_device = "gpu"
+    assert_specified_layout = True
+    storage_defaults = StorageDefaults(alignment_size=32, device="gpu", layout=gtcuda_layout)
 
     languages = {"computation": "cuda", "bindings": ["python"]}
 

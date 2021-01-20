@@ -21,12 +21,9 @@ from eve.codegen import MakoTemplate as as_mako
 from gt4py import backend as gt_backend
 from gt4py import gt_src_manager
 from gt4py.backend import BaseGTBackend, CLIBackendMixin
-from gt4py.backend.gt_backends import (
-    gtcpu_is_compatible_type,
-    make_x86_layout_map,
-    x86_is_compatible_layout,
-)
+from gt4py.backend.gt_backends import gtx86_layout
 from gt4py.backend.gtc_backend.defir_to_gtir import DefIRToGTIR
+from gt4py.storage.default_parameters import StorageDefaults
 from gtc import gtir_to_oir
 from gtc.common import DataType
 from gtc.gtcpp import gtcpp, gtcpp_codegen, oir_to_gtcpp
@@ -168,13 +165,10 @@ class GTCGTBackend(BaseGTBackend, CLIBackendMixin):
 
     GT_BACKEND_T = "x86"
     options: ClassVar[Dict[str, Any]] = {}
-    storage_info = {
-        "alignment": 1,
-        "device": "cpu",
-        "layout_map": make_x86_layout_map,
-        "is_compatible_layout": x86_is_compatible_layout,
-        "is_compatible_type": gtcpu_is_compatible_type,
-    }
+    compute_device = "cpu"
+    assert_specified_layout = True
+    storage_defaults = StorageDefaults(layout=gtx86_layout)
+
     languages = {"computation": "c++", "bindings": ["python"]}
 
     PYEXT_GENERATOR_CLASS = GTCGTExtGenerator  # type: ignore
