@@ -1,3 +1,19 @@
+# -*- coding: utf-8 -*-
+#
+# GT4Py - GridTools4Py - GridTools for Python
+#
+# Copyright (c) 2014-2021, ETH Zurich
+# All rights reserved.
+#
+# This file is part the GT4Py project and the GridTools framework.
+# GT4Py is free software: you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the
+# Free Software Foundation, either version 3 of the License, or any later
+# version. See the LICENSE.txt file at the top-level directory of this
+# distribution for a copy of the license or check <https://www.gnu.org/licenses/>.
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 import numpy
 
 from gt4py.gtscript import PARALLEL, Field, computation, interval
@@ -58,14 +74,11 @@ def test_usage_numpy_caching():
         StencilBuilder(simple_stencil)
         .with_backend("numpy")
         .with_externals({"a": 1.0})
-        .with_options(
-            name=simple_stencil.__name__, module=simple_stencil.__module__, rebuild=False
-        )
+        .with_options(name=simple_stencil.__name__, module=simple_stencil.__module__, rebuild=False)
     )
 
-    # second load should use caching
-    builder.backend.generate()
-    stencil_cls = builder.backend.load()
+    # second build should use caching
+    stencil_cls = builder.build()
     stencil_cls2 = builder.backend.load()
     assert stencil_cls
     assert isinstance(stencil_cls(), StencilObject)
@@ -75,7 +88,7 @@ def test_usage_numpy_caching():
     # regenerating should create a different stencil class
     stencil_cls3 = builder.with_externals({"a": 2.0}).backend.load()
     assert stencil_cls3 is None
-    builder.backend.generate()
+    builder.build()
     stencil_cls3 = builder.backend.load()
     assert stencil_cls._gt_id_ != stencil_cls3._gt_id_
 
@@ -89,10 +102,10 @@ def test_usage_numpy_nocaching(tmp_path):
         .with_options(name="simple_stencil", module="")
     )
 
-    computation_src = builder.backend.generate_computation()
+    computation_src = builder.generate_computation()
     assert "simple_stencil.py" in computation_src
 
-    builder.backend.generate()
+    builder.build()
     assert tmp_path.joinpath("simple_stencil", "simple_stencil.py").exists(), list(
         tmp_path.iterdir()
     )

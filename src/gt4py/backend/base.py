@@ -2,7 +2,7 @@
 #
 # GT4Py - GridTools4Py - GridTools for Python
 #
-# Copyright (c) 2014-2020, ETH Zurich
+# Copyright (c) 2014-2021, ETH Zurich
 # All rights reserved.
 #
 # This file is part the GT4Py project and the GridTools framework.
@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 REGISTRY = gt_utils.Registry()
 
 
-def from_name(name: str) -> Type:
+def from_name(name: str) -> Type["Backend"]:
     return REGISTRY.get(name, None)
 
 
@@ -66,7 +66,7 @@ class Backend(abc.ABC):
     #:  + info:
     #:    - versioning: is versioning on?
     #:    - description [optional]
-    #:
+    #:    - type
     options: ClassVar[Dict[str, Any]]
 
     #: Backend-specific storage parametrization:
@@ -132,7 +132,6 @@ class Backend(abc.ABC):
 
         Returns
         -------
-
         type:
             The generated stencil class after loading through python's import API
 
@@ -144,7 +143,7 @@ class Backend(abc.ABC):
 
     @property
     def extra_cache_info(self) -> Dict[str, Any]:
-        """Hook for storing additional data in cache info file."""
+        """Provide additional data to be stored in cache info file (sublass hook)."""
         return {}
 
     @property
@@ -153,31 +152,28 @@ class Backend(abc.ABC):
         return []
 
 
-class CLIBackendMixin:
+class CLIBackendMixin(Backend):
     @abc.abstractmethod
     def generate_computation(self) -> Dict[str, Union[str, Dict]]:
         """
         Generate the computation source code in a way agnostic of the way it is going to be used.
 
-
         Returns
         -------
-
         Dict[str, str | Dict] of source file names / directories -> contents:
             If a key's value is a string it is interpreted as a file name and the value as the
             source code of that file
             If a key's value is a Dict, it is interpreted as a directory name and it's
             value as a nested file hierarchy to which the same rules are applied recursively.
+            The root path is relative to the build directory.
 
         Raises
         ------
-
         NotImplementedError
             If the backend does not support usage outside of JIT compilation / generation.
 
         Example
         -------
-
         .. code-block:: python
 
             def mystencil(...):
@@ -207,6 +203,31 @@ class CLIBackendMixin:
 
         """
         raise NotImplementedError
+
+    @abc.abstractmethod
+    def generate_bindings(self, language_name: str) -> Dict[str, Union[str, Dict]]:
+        """
+        Generate bindings source code from ``language_name`` to the target language of the backend.
+
+        Returns
+        -------
+        Analog to :py:meth:`generate_computation` but containing bindings source code, The
+        dictionary contains a tree of directories with leaves being a mapping from filename to
+        source code pairs, relative to the build directory.
+
+        Raises
+        ------
+        RuntimeError
+            If the backend does not support the bindings language
+
+        """
+        languages = getattr(self, "languages", {"bindings": {}})
+        name = getattr(self, "name", "")
+        if language_name not in languages["bindings"]:
+            raise NotImplementedError(
+                f"Backend {name} does not implement bindings for {language_name}"
+            )
+        return {}
 
 
 class BaseBackend(Backend):
@@ -238,6 +259,7 @@ class BaseBackend(Backend):
         stencil_class = getattr(stencil_module, stencil_class_name)
         stencil_class.__module__ = self.builder.module_qualname
         stencil_class._gt_id_ = self.builder.stencil_id.version
+        stencil_class._file_name = file_name
         stencil_class.definition_func = staticmethod(self.builder.definition)
 
         return stencil_class
@@ -294,10 +316,12 @@ class BaseBackend(Backend):
                     else gt_definitions.AccessKind.READ_ONLY
                 )
                 if arg.name not in implementation_ir.unreferenced:
+                    field_decl = implementation_ir.fields[arg.name]
                     data["field_info"][arg.name] = gt_definitions.FieldInfo(
                         access=access,
-                        dtype=implementation_ir.fields[arg.name].data_type.dtype,
                         boundary=implementation_ir.fields_extents[arg.name].to_boundary(),
+                        axes=field_decl.axes,
+                        dtype=field_decl.data_type.dtype,
                     )
                 else:
                     data["field_info"][arg.name] = None
@@ -329,6 +353,10 @@ class PurePythonBackendCLIMixin(CLIBackendMixin):
         file_name = self.builder.module_path.name
         source = self.make_module_source(implementation_ir=self.builder.implementation_ir)
         return {str(file_name): source}
+
+    def generate_bindings(self, language_name: str) -> Dict[str, Union[str, Dict]]:
+        """Pure python backends typically will not support bindings."""
+        return super().generate_bindings(language_name)
 
 
 class BasePyExtBackend(BaseBackend):
@@ -446,7 +474,6 @@ class BaseModuleGenerator(abc.ABC):
         **kwargs: Any,
     ) -> str:
         """Generate source code for a Python module containing a StencilObject."""
-
         if builder:
             self._builder = builder
         self.args_data = args_data
@@ -507,16 +534,17 @@ class BaseModuleGenerator(abc.ABC):
             numpy_module=self.numpy_module,
             implementation=self.generate_implementation(),
         )
-        module_source = gt_utils.text.format_source(
-            module_source, line_length=self.SOURCE_LINE_LENGTH
-        )
+        if options["format_source"]:
+            module_source = gt_utils.text.format_source(
+                module_source, line_length=self.SOURCE_LINE_LENGTH
+            )
 
         return module_source
 
     @property
     def builder(self) -> "StencilBuilder":
         """
-        Buider reference
+        Expose the builder reference.
 
         Raises a runtime error if the builder reference is not initialized.
         This is necessary because other parts of the public API depend on it before it is
@@ -627,7 +655,7 @@ pyext_module = gt_utils.make_module_from_file(
         # only generate implementation if any multi_stages are present. e.g. if no statement in the
         # stencil has any effect on the API fields, this may not be the case since they could be
         # pruned.
-        if self.builder.implementation_ir.multi_stages:
+        if self.builder.implementation_ir.has_effect:
             source = """
 # Load or generate a GTComputation object for the current domain size
 pyext_module.run_computation(list(_domain_), {run_args}, exec_info)

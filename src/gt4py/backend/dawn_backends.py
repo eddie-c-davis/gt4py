@@ -143,8 +143,8 @@ class SIRConverter(gt_ir.IRNodeVisitor):
         for i in range(len(out_fields) - 1, -1, -1):
             out_field = out_fields[i]
             compute_extent |= out_field["extent"]
-            for input in out_field["inputs"]:
-                in_field = field_info[input]
+            for input_f in out_field["inputs"]:
+                in_field = field_info[input_f]
                 accumulated_extent = compute_extent + in_field["extent"]
                 in_field["extent"] |= accumulated_extent
 
@@ -173,7 +173,7 @@ class SIRConverter(gt_ir.IRNodeVisitor):
         elif node.data_type in (gt_ir.DataType.FLOAT32, gt_ir.DataType.FLOAT64):
             sir_type = SIR.BuiltinType.Float
         else:
-            assert False, "Unrecognized data type"
+            raise AssertionError("Unrecognized data type")
         return sir_utils.make_literal_access_expr(value=repr(node.value), type=sir_type)
 
     def visit_VarRef(self, node: gt_ir.VarRef, **kwargs: Any) -> SIR.VarAccessExpr:
@@ -223,12 +223,6 @@ class SIRConverter(gt_ir.IRNodeVisitor):
         right = self.visit(node.value)
         stmt = sir_utils.make_assignment_stmt(left, right, "=")
         return stmt
-
-    def visit_AugAssign(self, node: gt_ir.AugAssign) -> SIR.AssignmentExpr:
-        # ignore types due to attribclass problem
-        bin_op = gt_ir.BinOpExpr(lhs=node.target, op=node.op, rhs=node.value)  # type: ignore
-        assign = gt_ir.Assign(target=node.target, value=bin_op)  # type: ignore
-        return self.visit(assign)
 
     def visit_If(self, node: gt_ir.If, **kwargs: Any) -> SIR.IfStmt:
         cond = sir_utils.make_expr_stmt(self.visit(node.condition))
@@ -295,12 +289,12 @@ class SIRConverter(gt_ir.IRNodeVisitor):
 
 
 _DAWN_BASE_OPTIONS = {
-    "add_profile_info": {"versioning": True},
-    "clean": {"versioning": False},
-    "debug_mode": {"versioning": True},
-    "dump_sir": {"versioning": False},
-    "verbose": {"versioning": False},
-    "no_opt": {"versioning": False},
+    "add_profile_info": {"versioning": True, "type": bool},
+    "clean": {"versioning": False, "type": bool},
+    "debug_mode": {"versioning": True, "type": bool},
+    "dump_sir": {"versioning": False, "type": bool},
+    "verbose": {"versioning": False, "type": bool},
+    "no_opt": {"versioning": False, "type": bool},
 }
 
 
@@ -313,9 +307,9 @@ for name in dir(dawn4py.CodeGenOptions) + dir(dawn4py.OptimizerOptions):
         or name.startswith("serialize")
         or name.startswith("deserialize")
     ):
-        _DAWN_TOOLCHAIN_OPTIONS[name] = {"versioning": False}
+        _DAWN_TOOLCHAIN_OPTIONS[name] = {"versioning": False, "type": bool}
     elif not name.startswith("_") and name != "backend":
-        _DAWN_TOOLCHAIN_OPTIONS[name] = {"versioning": True}
+        _DAWN_TOOLCHAIN_OPTIONS[name] = {"versioning": True, "type": bool}
 
 
 _DAWN_BACKEND_OPTIONS = {**_DAWN_BASE_OPTIONS, **_DAWN_TOOLCHAIN_OPTIONS}
@@ -323,9 +317,7 @@ _DAWN_BACKEND_OPTIONS = {**_DAWN_BASE_OPTIONS, **_DAWN_TOOLCHAIN_OPTIONS}
 
 class DawnPyModuleGenerator(gt_backend.PyExtModuleGenerator):
     def generate_implementation(self) -> str:
-        sources = gt_text.TextBlock(
-            indent_size=gt_backend.BaseModuleGenerator.TEMPLATE_INDENT_SIZE
-        )
+        sources = gt_text.TextBlock(indent_size=gt_backend.BaseModuleGenerator.TEMPLATE_INDENT_SIZE)
 
         args = []
         empty_checks = []
@@ -368,6 +360,29 @@ pyext_module.run_computation(list(_domain_), {run_args}, exec_info)
 
         return sources.text
 
+    def backend_pre_run(self) -> List[str]:
+        return []
+
+    def backend_imports(self) -> List[str]:
+        return []
+
+    def generate_pre_run(self) -> str:
+        field_size_check = """
+for name, other_name in itertools.combinations(field_args, 2):
+    field = field_args[name]
+    other_field = field_args[other_name]
+    if field.mask == other_field.mask and not other_field.shape == field.shape:
+        raise ValueError(
+            f"The fields {name} and {other_name} have the same mask but different shapes."
+        )"""
+
+        return "\n".join(self.backend_pre_run() + [field_size_check])
+
+    def generate_imports(self) -> str:
+        return "\n".join(
+            self.backend_imports() + ["import itertools"] + [super().generate_imports()]
+        )
+
 
 class DawnCUDAPyModuleGenerator(DawnPyModuleGenerator):
     def generate_implementation(self) -> str:
@@ -380,18 +395,14 @@ cupy.cuda.Device(0).synchronize()
 
         return source
 
-    def generate_imports(self) -> str:
-        source = (
-            super().generate_imports()
-            + """
-import cupy
-    """
-        )
-        return source
+    def backend_imports(self) -> List[str]:
+        return ["import cupy"]
 
-    def generate_pre_run(self) -> str:
-        field_names = self.args_data["field_info"].keys()
-        return "\n".join([f + ".host_to_device()" for f in field_names])
+    def backend_pre_run(self) -> List[str]:
+        field_names = [
+            key for key, value in self.args_data["field_info"].items() if value is not None
+        ]
+        return [f"{name}.host_to_device()" for name in field_names]
 
     def generate_post_run(self) -> str:
         output_field_names = [
@@ -573,7 +584,7 @@ class BaseDawnBackend(gt_backend.BasePyExtBackend):
             elif parameter.data_type in [gt_ir.DataType.FLOAT32, gt_ir.DataType.FLOAT64]:
                 dtype = "double"
             else:
-                assert False, "Wrong data_type for parameter"
+                raise AssertionError("Wrong data_type for parameter")
             parameters.append({"name": parameter.name, "dtype": dtype})
 
         template_args = dict(
@@ -598,7 +609,7 @@ class BaseDawnBackend(gt_backend.BasePyExtBackend):
     def make_args_data(
         definition_ir: gt_ir.StencilDefinition, sir_field_info: Dict[str, Any]
     ) -> Dict[str, Any]:
-        data: Dict[str, Any] = {"field_info": {}, "parameter_info": {}, "unreferenced": {}}
+        data: Dict[str, Any] = {"field_info": {}, "parameter_info": {}, "unreferenced": set()}
 
         fields = {item.name: item for item in definition_ir.api_fields}
         parameters = {item.name: item for item in definition_ir.parameters}
@@ -608,11 +619,14 @@ class BaseDawnBackend(gt_backend.BasePyExtBackend):
                 access = sir_field_info[arg.name]["access"]
                 if access is None:
                     access = gt_definitions.AccessKind.READ_ONLY
-                    data["unreferenced"].append(arg.name)
+                    data["unreferenced"].add(arg.name)
                 extent = sir_field_info[arg.name]["extent"]
                 boundary = gt_definitions.Boundary([(-pair[0], pair[1]) for pair in extent])
                 data["field_info"][arg.name] = gt_definitions.FieldInfo(
-                    access=access, dtype=fields[arg.name].data_type.dtype, boundary=boundary
+                    access=access,
+                    boundary=boundary,
+                    axes=fields[arg.name].axes,
+                    dtype=fields[arg.name].data_type.dtype,
                 )
             else:
                 data["parameter_info"][arg.name] = gt_definitions.ParameterInfo(

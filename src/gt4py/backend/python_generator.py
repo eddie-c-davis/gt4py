@@ -2,7 +2,7 @@
 #
 # GT4Py - GridTools4Py - GridTools for Python
 #
-# Copyright (c) 2014-2020, ETH Zurich
+# Copyright (c) 2014-2021, ETH Zurich
 # All rights reserved.
 #
 # This file is part the GT4Py project and the GridTools framework.
@@ -50,6 +50,12 @@ class PythonSourceGenerator(gt_ir.IRNodeVisitor):
         gt_ir.NativeFunction.TRUNC: "math.trunc",
     }
 
+    BUILTIN_TO_PYTHON = {
+        gt_ir.Builtin.NONE: "None",
+        gt_ir.Builtin.FALSE: "False",
+        gt_ir.Builtin.TRUE: "True",
+    }
+
     def __init__(
         self,
         *,
@@ -77,6 +83,8 @@ class PythonSourceGenerator(gt_ir.IRNodeVisitor):
         self.io_field_names = None
         self.param_names = None
 
+        self.var_refs_defined = set()
+
     def __call__(self, impl_node: gt_ir.Node, sources: gt_text.TextBlock):
         assert isinstance(impl_node, gt_ir.StencilImplementation)
         assert impl_node.domain.sequential_axis.name == gt_definitions.CartesianSpace.Axis.K.name
@@ -98,9 +106,7 @@ class PythonSourceGenerator(gt_ir.IRNodeVisitor):
         #         self.k_splitters_value.extend(
         #             ["{}[{}]".format(item.name, i) for i in range(item.length)]
         #         )
-        self.k_splitters_value.append(
-            "{dom}[{idx}]".format(dom=self.domain_arg_name, idx=k_ax_idx)
-        )
+        self.k_splitters_value.append("{dom}[{idx}]".format(dom=self.domain_arg_name, idx=k_ax_idx))
 
         self.sources = sources
         self.visit(impl_node)
@@ -132,6 +138,12 @@ class PythonSourceGenerator(gt_ir.IRNodeVisitor):
     # ---- Visitor handlers ----
     def generic_visit(self, node: gt_ir.Node, **kwargs):
         raise RuntimeError("Invalid IR node: {}".format(node))
+
+    def visit_Cast(self, node: gt_ir.Cast):
+        return self.visit(node.expr)
+
+    def visit_BuiltinLiteral(self, node: gt_ir.BuiltinLiteral):
+        return self.BUILTIN_TO_PYTHON[node.value]
 
     def visit_Decl(self, node: gt_ir.Decl):
         raise NotImplementedError()
@@ -195,7 +207,12 @@ class PythonSourceGenerator(gt_ir.IRNodeVisitor):
     def visit_Assign(self, node: gt_ir.Assign):
         lhs = self.visit(node.target)
         rhs = self.visit(node.value)
+
         source = "{lhs} = {rhs}".format(lhs=lhs, rhs=rhs)
+
+        # self.var_refs_defined is used in the numpy backend
+        if isinstance(node.target, gt_ir.VarRef):
+            self.var_refs_defined.add(node.target.name)
 
         return source
         # if node.target.name in self.state["variables"]:
@@ -251,6 +268,7 @@ class PythonSourceGenerator(gt_ir.IRNodeVisitor):
         self.block_info.accessors = {accessor.symbol for accessor in node.accessors}
         self.block_info.iteration_order = iteration_order
         self.block_info.extent = node.compute_extent
+        self.var_refs_defined.clear()
 
         # Create regions and computations
         regions = []
